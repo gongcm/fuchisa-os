@@ -63,6 +63,38 @@ FUNCTION(riscv64_set_current_thread)
     ret
 END_FUNCTION(riscv64_set_current_thread)
 
+// void riscv64_uspace_entry(iframe_t* iframe) __NO_RETURN;
+FUNCTION(riscv64_uspace_entry)
+    // Load the iframe
+    ld     t0, REGOFF(0)(a0)
+    csrw   sscratch, t0
+    ld     sp, REGOFF(1)(a0)
+    ld     t0, REGOFF(2)(a0)
+    csrw   sepc, t0
+    ld     t0, REGOFF(3)(a0)
+    csrw   sstatus, t0
+    ld     ra, REGOFF(4)(a0)
+    ld     a1, REGOFF(6)(a0)
+    ld     a2, REGOFF(7)(a0)
+    ld     a3, REGOFF(8)(a0)
+    ld     a4, REGOFF(9)(a0)
+    ld     a5, REGOFF(10)(a0)
+    ld     a6, REGOFF(11)(a0)
+    ld     a7, REGOFF(12)(a0)
+    ld     t0, REGOFF(13)(a0)
+    ld     t1, REGOFF(14)(a0)
+    ld     t2, REGOFF(15)(a0)
+    ld     t3, REGOFF(16)(a0)
+    ld     t4, REGOFF(17)(a0)
+    ld     t5, REGOFF(18)(a0)
+    ld     t6, REGOFF(19)(a0)
+    ld     a0, REGOFF(5)(a0)
+
+    // TODO(revest): zero out remaining registers ?
+
+    sret
+END_FUNCTION(riscv64_uspace_entry)
+
 // top level exception handler for riscv64 in non vectored mode
 .balign 4
 FUNCTION(riscv64_exception_entry)
