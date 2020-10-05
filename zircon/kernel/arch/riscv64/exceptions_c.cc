@@ -14,6 +14,7 @@
 #include <zircon/syscalls/exception.h>
 #include <arch/regs.h>
 #include <zircon/types.h>
+#include <syscalls/syscalls.h>
 
 #include <arch/arch_ops.h>
 #include <arch/exception.h>
@@ -166,6 +167,11 @@ extern "C" void riscv64_exception_handler(long cause, struct iframe_t *frame) {
       case RISCV64_EXCEPTION_LOAD_PAGE_FAULT:
       case RISCV64_EXCEPTION_STORE_PAGE_FAULT:
         riscv64_page_fault_handler(cause, frame);
+        break;
+      case RISCV64_EXCEPTION_ENV_CALL_U_MODE:
+        frame->epc = frame->epc + 0x4; // Skip the ecall instruction
+        frame->a0 = riscv64_syscall_dispatcher(frame).status;
+        // TODO(revest): handle ret.is_signaled
         break;
       default:
         fatal_exception(cause, frame);
