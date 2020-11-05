@@ -5,6 +5,8 @@
 #ifndef SRC_STORAGE_MINFS_DIRECTORY_H_
 #define SRC_STORAGE_MINFS_DIRECTORY_H_
 
+#include <lib/zx/status.h>
+
 #include <fbl/algorithm.h>
 #include <fbl/ref_ptr.h>
 #include <fs/trace.h>
@@ -56,6 +58,8 @@ class Directory final : public VnodeMinfs, public fbl::Recyclable<Directory> {
                      fbl::StringPiece newname, bool src_must_be_dir, bool dst_must_be_dir) final;
   zx_status_t Link(fbl::StringPiece name, fbl::RefPtr<fs::Vnode> target) final;
   zx_status_t Truncate(size_t len) final;
+  zx::status<> FlushCachedWrites() final { return zx::ok(); }
+  void DropCachedWrites() final {}
 
  private:
   // minfs::Vnode interface.
@@ -74,6 +78,9 @@ class Directory final : public VnodeMinfs, public fbl::Recyclable<Directory> {
   bool HasPendingAllocation(blk_t vmo_offset) final;
   void CancelPendingWriteback() final;
 #endif
+
+  bool CacheDirtyPages() const final { return false; }
+  bool IsDirty() const final { return false; }
 
   // Other, non-virtual methods:
 

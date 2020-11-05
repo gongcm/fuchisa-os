@@ -6,7 +6,7 @@
 
 #include <memory>
 
-#include "lib/zx/status.h"
+#include <lib/zx/status.h>
 #include "src/storage/minfs/allocator_reservation.h"
 #include "src/storage/minfs/cached_transaction.h"
 #include "zircon/types.h"

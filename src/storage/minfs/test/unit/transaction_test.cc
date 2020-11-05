@@ -392,7 +392,8 @@ class MockVnodeMinfs : public VnodeMinfs, public fbl::Recyclable<MockVnodeMinfs>
   zx_status_t CanUnlink() const final { return false; }
   bool CacheDirtyPages() const final { return false; }
   bool IsDirty() const final { return false; }
-  zx::status<> FlushPendingWrites() final { return zx::ok(); }
+  zx::status<> FlushCachedWrites() final { return zx::ok(); }
+  void DropCachedWrites() final {}
 
   // minfs::Vnode interface.
   blk_t GetBlockCount() const final { return 0; }

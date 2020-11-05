@@ -6,6 +6,8 @@ import("//build/fuzzing/fuzzer.gni")
 import("//build/test.gni")
 import("//build/testing/bootfs_test.gni")
 import("//src/sys/build/components.gni")
+import("//src/sys/build/fuchsia_test_package.gni")
+import("//src/sys/build/fuchsia_unittest_package.gni")
 import("//zircon/system/ulib/devmgr-integration-test/isolated_devmgr.gni")
 
 test("minfs-unit") {
@@ -73,7 +75,10 @@ source_set("integration-fixtures") {
   ]
 }
 
-test("minfs-integration") {
+# These tests use zxtest and don't use new fs_test fixture. These tests need to
+# be migrated to gtest/fs_test framework. Try not to add new tests here and
+# instead add to minfs-integration.
+test("minfs-integration-deprecated") {
   if (is_fuchsia) {
     configs += [ "//build/unification/config:zircon-migrated" ]
   }
@@ -90,7 +95,9 @@ test("minfs-integration") {
     "//sdk/fidl/fuchsia.io:fuchsia.io_llcpp",
     "//sdk/fidl/fuchsia.minfs:fuchsia.minfs_llcpp",
     "//src/devices/tests/sysdev",
+    "//src/storage/fs_test",
     "//src/storage/minfs",
+    "//third_party/googletest:gtest",
     "//zircon/public/lib/async",
     "//zircon/public/lib/async-cpp",
     "//zircon/public/lib/fbl",
@@ -107,6 +114,25 @@ test("minfs-integration") {
     "//zircon/system/ulib/fs/test_support",
     "//zircon/system/ulib/fvm",
     "//zircon/system/ulib/memfs",
+  ]
+}
+
+test("minfs-integration") {
+  testonly = true
+  sources = [ "integration/dirty_cache_test.cc" ]
+  deps = [
+    "//sdk/fidl/fuchsia.fs",
+    "//sdk/fidl/fuchsia.io:fuchsia.io_llcpp",
+    "//sdk/fidl/fuchsia.minfs:fuchsia.minfs_llcpp",
+    "//src/lib/fxl/test:gtest_main",
+    "//src/lib/isolated_devmgr/v2_component:client",
+    "//src/storage/fs_test",
+    "//src/storage/minfs",
+    "//third_party/googletest:gtest",
+    "//zircon/public/lib/fbl",
+    "//zircon/public/lib/zxc",
+    "//zircon/system/ulib/fdio-caller",
+    "//zircon/system/ulib/fs-management",
   ]
 }
 
@@ -206,11 +232,11 @@ fuzzers_package("minfs-fuzzers") {
   cpp_fuzzers = [ ":minfs-fuzzer" ]
 }
 
-isolated_devmgr_unittest_component("minfs-integration-test") {
-  executable_path = "test/minfs-integration"
+isolated_devmgr_unittest_component("minfs-integration-deprecated-test") {
+  executable_path = "test/minfs-integration-deprecated"
 
   deps = [
-    ":minfs-integration",
+    ":minfs-integration-deprecated",
     "//src/devices/block/drivers/core",
     "//src/devices/block/drivers/fvm",
     "//src/devices/block/drivers/ramdisk",
@@ -218,6 +244,12 @@ isolated_devmgr_unittest_component("minfs-integration-test") {
     "//src/devices/tests/sysdev",
     "//src/storage/bin/minfs",
   ]
+}
+
+fuchsia_component("minfs-integration-test") {
+  testonly = true
+  manifest = "meta/integration_test.cml"
+  deps = [ ":minfs-integration" ]
 }
 
 isolated_devmgr_unittest_component("minfs-power-test") {
@@ -266,6 +298,7 @@ fuchsia_test_package("minfs-tests") {
   }
 
   test_components = [
+    ":minfs-integration-deprecated-test",
     ":minfs-integration-test",
     ":minfs-power-test",
     ":minfs-unit-test",

@@ -12,6 +12,7 @@
 #include <zircon/time.h>
 
 #include <cstdint>
+#include <iostream>
 #include <memory>
 
 #include <fbl/algorithm.h>
@@ -261,7 +262,10 @@ zx_status_t VnodeMinfs::RemoveInodeLink(Transaction* transaction) {
 
   if (IsUnlinked()) {
     if (fd_count_ == 0) {
-      zx_status_t status = Purge(transaction);
+      // No need to flush/retain dirty cache or the reservations.
+      DropCachedWrites();
+      zx_status_t status;
+      status = Purge(transaction);
       if (status != ZX_OK) {
         return status;
       }
@@ -347,26 +351,47 @@ zx_status_t VnodeMinfs::Purge(Transaction* transaction) {
   return fs_->InoFree(transaction, this);
 }
 
+zx_status_t VnodeMinfs::RemoveUnlinked() {
+  zx_status_t status;
+  std::unique_ptr<Transaction> transaction;
+
+  if ((status = fs_->BeginTransaction(0, 0, &transaction)) != ZX_OK) {
+    // In case of error, we still need to release this vnode because it's not possible to retry,
+    // and we cannot block destruction. The inode will get cleaned up on next remount.
+    fs_->VnodeRelease(this);
+    return status;
+  }
+
+  fs_->RemoveUnlinked(transaction.get(), this);
+  if ((status = Purge(transaction.get())) != ZX_OK) {
+    return status;
+  }
+
+  fs_->CommitTransaction(std::move(transaction));
+  return ZX_OK;
+}
+
 zx_status_t VnodeMinfs::Close() {
   ZX_DEBUG_ASSERT_MSG(fd_count_ > 0, "Closing ino with no fds open");
   fd_count_--;
 
-  if (fd_count_ == 0 && IsUnlinked()) {
-    zx_status_t status;
-    std::unique_ptr<Transaction> transaction;
-    if ((status = fs_->BeginTransaction(0, 0, &transaction)) != ZX_OK) {
-      // In case of error, we still need to release this vnode because it's not possible to retry,
-      // and we cannot block destruction. The inode will get cleaned up on next remount.
-      fs_->VnodeRelease(this);
-      return status;
-    }
-    fs_->RemoveUnlinked(transaction.get(), this);
-    if ((status = Purge(transaction.get())) != ZX_OK) {
-      return status;
-    }
-    fs_->CommitTransaction(std::move(transaction));
+  if (fd_count_ != 0) {
+    return ZX_OK;
   }
-  return ZX_OK;
+
+  zx_status_t status = ZX_OK;
+  if (!IsUnlinked()) {
+    auto result = FlushCachedWrites();
+    if (result.is_error()) {
+      FS_TRACE_ERROR("Failed(%d) to flush pending writes for inode:%u\n", status, GetIno());
+    }
+    return result.status_value();
+  }
+
+  // This vnode is unlinked and fd_count_ == 0. We don't need not flush the dirty
+  // contents of the vnode to disk.
+  DropCachedWrites();
+  return RemoveUnlinked();
 }
 
 // Internal read. Usable on directories.
@@ -477,13 +502,15 @@ zx_status_t VnodeMinfs::WriteInternal(Transaction* transaction, const uint8_t* d
       break;
     }
 
-    // Update this block on-disk
-    blk_t bno;
-    if ((status = BlockGetWritable(transaction, n, &bno))) {
-      break;
-    }
+    if (!CacheDirtyPages()) {
+      // Update this block on-disk
+      blk_t bno;
+      if ((status = BlockGetWritable(transaction, n, &bno))) {
+        break;
+      }
 
-    IssueWriteback(transaction, n, bno + fs_->Info().dat_block, 1);
+      IssueWriteback(transaction, n, bno + fs_->Info().dat_block, 1);
+    }
 #else   // __Fuchsia__
     blk_t bno;
     if ((status = BlockGetWritable(transaction, n, &bno))) {
@@ -564,7 +591,7 @@ zx_status_t VnodeMinfs::SetAttributes(fs::VnodeAttributesUpdate attr) {
     // any unhandled field update is unsupported
     return ZX_ERR_INVALID_ARGS;
   }
-  if (dirty) {
+  if (dirty && !CacheDirtyPages()) {
     // write to disk, but don't overwrite the time
     zx_status_t status;
     std::unique_ptr<Transaction> transaction;
@@ -628,6 +655,7 @@ constexpr const char kFsName[] = "minfs";
 zx_status_t VnodeMinfs::QueryFilesystem(::llcpp::fuchsia::io::FilesystemInfo* info) {
   static_assert(fbl::constexpr_strlen(kFsName) + 1 < ::llcpp::fuchsia::io::MAX_FS_NAME_BUFFER,
                 "Minfs name too long");
+  uint32_t reserved_blocks = Vfs()->BlocksReserved();
   Transaction transaction(fs_);
   *info = {};
   info->block_size = fs_->BlockSize();
@@ -635,7 +663,7 @@ zx_status_t VnodeMinfs::QueryFilesystem(::llcpp::fuchsia::io::FilesystemInfo* in
   info->fs_type = VFS_TYPE_MINFS;
   info->fs_id = fs_->GetFsId();
   info->total_bytes = fs_->Info().block_count * fs_->Info().block_size;
-  info->used_bytes = fs_->Info().alloc_block_count * fs_->Info().block_size;
+  info->used_bytes = (fs_->Info().alloc_block_count + reserved_blocks) * fs_->Info().block_size;
   info->total_nodes = fs_->Info().inode_count;
   info->used_nodes = fs_->Info().alloc_inode_count;
 

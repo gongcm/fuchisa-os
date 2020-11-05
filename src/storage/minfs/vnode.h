@@ -109,6 +109,7 @@ class VnodeMinfs : public fs::Vnode,
   using fs::Vnode::Open;
   zx_status_t Open(ValidatedOptions options, fbl::RefPtr<Vnode>* out_redirect) final;
   zx_status_t Close() final;
+  zx_status_t RemoveUnlinked();
 
   // fbl::Recyclable interface.
   void fbl_recycle() override;
@@ -118,6 +119,13 @@ class VnodeMinfs : public fs::Vnode,
   // If the response is not ZX_OK, operations to unlink (or rename on top of) this
   // vnode will fail.
   virtual zx_status_t CanUnlink() const = 0;
+
+  // Issues a write on all dirty bytes within a vnode.
+  virtual zx::status<> FlushCachedWrites() = 0;
+
+  // Discards all the dirty bytes within a vnode.
+  // This also drops any inode or block reservation a vnode might have.
+  virtual void DropCachedWrites() = 0;
 
   // Returns the current block count of the vnode.
   virtual blk_t GetBlockCount() const = 0;
@@ -148,8 +156,9 @@ class VnodeMinfs : public fs::Vnode,
   virtual void AcquireWritableBlock(Transaction* transaction, blk_t vmo_offset, blk_t dev_offset,
                                     blk_t* out_dev_offset) = 0;
 
-  // Deletes the block at |vmo_offset| within the file, corresponding to on-disk block |dev_offset|
-  // (zero if unallocated). |indirect| specifies whether the block is a direct or indirect block.
+  // Deletes the block at |vmo_offset| within the file, corresponding to on-disk block
+  // |dev_offset| (zero if unallocated). |indirect| specifies whether the block is a direct or
+  // indirect block.
   virtual void DeleteBlock(PendingWork* transaction, blk_t vmo_offset, blk_t dev_offset,
                            bool indirect) = 0;
 
@@ -179,7 +188,13 @@ class VnodeMinfs : public fs::Vnode,
   zx::unowned_vmo vmo() const { return zx::unowned_vmo(vmo_.get()); }
 
 #endif
-  Minfs* Vfs() { return fs_; }
+  // Returns true if dirty pages can be cached.
+  virtual bool CacheDirtyPages() const = 0;
+
+  // Returns true if the vnode needs to be flushed.
+  virtual bool IsDirty() const = 0;
+
+  Minfs* Vfs() const { return fs_; }
 
   // Local implementations of read, write, and truncate functions which
   // may operate on either files or directories.
@@ -285,8 +300,8 @@ class VnodeMinfs : public fs::Vnode,
   fs::WatcherContainer watcher_{};
 #endif
 
-  // vnode_mapper.cc explains what this is and the code there is responsible for manipulating it. It
-  // is created on-demand.
+  // vnode_mapper.cc explains what this is and the code there is responsible for manipulating it.
+  // It is created on-demand.
   std::unique_ptr<LazyBuffer> indirect_file_;
 
   ino_t ino_{};

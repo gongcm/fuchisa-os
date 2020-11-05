@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <zircon/device/vfs.h>
 #include <zircon/errors.h>
@@ -96,7 +97,8 @@ void FillPartition(const TestFilesystem& fs, int fd, uint32_t max_remaining_bloc
       --blocks;
     }
     size_t bytes = std::min<size_t>(data.size(), blocks * minfs::kMinfsBlockSize);
-    ASSERT_EQ(write(fd, data.data(), bytes), static_cast<ssize_t>(bytes));
+    ASSERT_GT(write(fd, data.data(), bytes), 0);
+    ASSERT_EQ(fsync(fd), 0);
   }
 
   ASSERT_LE(free_blocks, max_remaining_blocks);
@@ -345,7 +347,7 @@ TEST_F(MinfsFvmTestWith8MiBSliceSize, FullOperations) {
   // Write to the "big" file, filling the partition
   // and leaving at most kMinfsDirect + 1 blocks unused.
   uint32_t free_blocks = minfs::kMinfsDirect + 1;
-  uint32_t actual_blocks;
+  uint32_t actual_blocks = 0;
   ASSERT_NO_FATAL_FAILURE(FillPartition(fs(), big_fd.get(), free_blocks, &actual_blocks));
 
   // Write enough data to the second file to take up all remaining blocks except for 1.

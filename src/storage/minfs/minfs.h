@@ -84,7 +84,7 @@ struct MountOptions {
   uint32_t fvm_data_slices = 1;
 };
 
-uint32_t CalculateVsliceCount(const Superblock& info);
+uint32_t CalculateVsliceCount(const Superblock& superblock);
 
 // Format the partition backed by |bc| as MinFS.
 zx_status_t Mkfs(const MountOptions& options, Bcache* bc);

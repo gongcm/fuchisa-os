@@ -16,6 +16,7 @@
 
 #include <limits>
 #include <memory>
+#include <vector>
 
 #include <bitmap/raw-bitmap.h>
 #include <fbl/algorithm.h>
@@ -24,6 +25,9 @@
 #include <fs/journal/initializer.h>
 #include <fs/trace.h>
 #include <safemath/checked_math.h>
+
+#include "src/storage/minfs/allocator_reservation.h"
+#include "src/storage/minfs/writeback.h"
 #ifdef __Fuchsia__
 #include <fuchsia/minfs/llcpp/fidl.h>
 #include <lib/async/cpp/task.h>
@@ -628,6 +632,11 @@ void Minfs::Sync(SyncCallback closure) {
     if (closure)
       closure(ZX_OK);
     return;
+  }
+  auto dirty_vnodes = GetDirtyVnodes();
+  for (auto vnode : dirty_vnodes) {
+    auto status = vnode->FlushCachedWrites();
+    ZX_ASSERT(status.is_ok());
   }
   EnqueueCallback(std::move(closure));
 }
