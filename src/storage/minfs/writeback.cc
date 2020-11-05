@@ -6,6 +6,11 @@
 
 #include <memory>
 
+#include "lib/zx/status.h"
+#include "src/storage/minfs/allocator_reservation.h"
+#include "src/storage/minfs/cached_transaction.h"
+#include "zircon/types.h"
+
 #ifdef __Fuchsia__
 #include <lib/fzl/owned-vmo-mapper.h>
 #include <lib/zx/vmo.h>
@@ -32,7 +37,7 @@ namespace minfs {
 zx_status_t Transaction::Create(TransactionalFs* minfs, size_t reserve_inodes,
                                 size_t reserve_blocks, InodeManager* inode_manager,
                                 std::unique_ptr<Transaction>* out) {
-  auto transaction = std::make_unique<Transaction>(minfs);
+  auto transaction = std::make_unique<Transaction>(minfs, nullptr);
 
   if (reserve_inodes) {
     // The inode allocator is currently not accessed asynchronously.
@@ -46,8 +51,10 @@ zx_status_t Transaction::Create(TransactionalFs* minfs, size_t reserve_inodes,
   }
 
   if (reserve_blocks) {
-    zx_status_t status = transaction->block_reservation_.Reserve(transaction.get(), reserve_blocks);
+    zx_status_t status =
+        transaction->block_reservation_->ExtendReservation(transaction.get(), reserve_blocks);
     if (status != ZX_OK) {
+      *out = std::move(transaction);
       return status;
     }
   }
@@ -56,19 +63,30 @@ zx_status_t Transaction::Create(TransactionalFs* minfs, size_t reserve_inodes,
   return ZX_OK;
 }
 
-Transaction::Transaction(TransactionalFs* minfs)
+std::unique_ptr<Transaction> Transaction::FromCachedTransaction(
+    TransactionalFs* minfs, std::unique_ptr<CachedTransaction> cached_transaction) {
+  auto transaction = std::make_unique<Transaction>(minfs, std::move(cached_transaction));
+  return transaction;
+}
+
+Transaction::Transaction(TransactionalFs* minfs,
+                         std::unique_ptr<CachedTransaction> cached_transaction)
     :
 #ifdef __Fuchsia__
       lock_(minfs->GetLock()),
 #endif
       inode_reservation_(&minfs->GetInodeAllocator()),
-      block_reservation_(&minfs->GetBlockAllocator()) {
+      block_reservation_(cached_transaction == nullptr
+                             ? std::make_unique<AllocatorReservation>(&minfs->GetBlockAllocator())
+                             : cached_transaction->TakeBlockReservations()) {
 }
 
 Transaction::~Transaction() {
   // Unreserve all reserved inodes/blocks while the lock is still held.
   inode_reservation_.Cancel();
-  block_reservation_.Cancel();
+  if (block_reservation_ != nullptr) {
+    block_reservation_->Cancel();
+  }
 }
 
 #ifdef __Fuchsia__
@@ -112,7 +130,7 @@ void Transaction::PinVnode(fbl::RefPtr<VnodeMinfs> vnode) {}
 #endif
 
 zx_status_t Transaction::ExtendBlockReservation(size_t reserve_blocks) {
-  return block_reservation_.ExtendReservation(this, reserve_blocks);
+  return block_reservation_->ExtendReservation(this, reserve_blocks);
 }
 
 }  // namespace minfs
