@@ -53,6 +53,7 @@ pub async fn connect(
     let credential = credential_from_bytes(target_pwd)?;
     let mut req = fidl_sme::ConnectRequest {
         ssid: target_ssid,
+        bss_desc: None,
         credential,
         radio_cfg: fidl_sme::RadioConfig {
             override_phy: false,
@@ -1009,6 +1010,7 @@ mod tests {
                     },
                     protection: Protection::Wpa2Personal,
                     compatible: true,
+                    bss_desc: None,
                 };
                 Some(Box::new(bss_info))
             }
@@ -1086,8 +1088,9 @@ mod tests {
         assert!(test_scan_error().is_err())
     }
 
+    // TODO: This should probably use the same clone as wlancfg??
     fn clone_bss_info(bss_info: &fidl_sme::BssInfo) -> fidl_sme::BssInfo {
-        fidl_sme::BssInfo { ssid: bss_info.ssid.clone(), ..*bss_info }
+        fidl_sme::BssInfo { ssid: bss_info.ssid.clone(), bss_desc: None, ..*bss_info }
     }
 
     fn test_scan(mut scan_results: Vec<fidl_sme::BssInfo>) -> Vec<fidl_sme::BssInfo> {
@@ -1180,7 +1183,16 @@ mod tests {
         protection: Protection,
         compatible: bool,
     ) -> fidl_sme::BssInfo {
-        fidl_sme::BssInfo { bssid, ssid, rssi_dbm, snr_db, channel, protection, compatible }
+        fidl_sme::BssInfo {
+            bssid,
+            ssid,
+            rssi_dbm,
+            snr_db,
+            channel,
+            protection,
+            compatible,
+            bss_desc: None,
+        }
     }
 
     fn assert_eq_credentials(
