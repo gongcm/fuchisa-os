@@ -315,6 +315,35 @@ impl ClientSme {
         self.state = self.state.take().map(|state| state.cancel_ongoing_connect(&mut self.context));
 
         let ssid = req.ssid;
+
+        if let Some(bss_desc) = req.bss_desc {
+            // We can connect directly now.
+            let viable_bss = match get_protection(
+                &self.context.device_info,
+                &self.cfg,
+                &req.credential,
+                &bss_desc,
+                &self.context.inspect.hasher,
+            ) {
+                Err(e) => {
+                    warn!("{:?}", e);
+                    responder.respond(SelectNetworkFailure::IncompatibleConnectRequest.into());
+                    return receiver;
+                }
+                Ok(protection) => ViableBss { bss: &bss_desc, protection },
+            };
+            self.context.info.report_candidate_network(clone_bss_desc(&bss_desc));
+            let cmd = ConnectCommand {
+                bss: Box::new(clone_bss_desc(&bss_desc)),
+                responder: Some(responder),
+                protection: viable_bss.protection,
+                radio_cfg: RadioConfig::from_fidl(req.radio_cfg),
+            };
+
+            self.state = self.state.take().map(|state| state.connect(cmd, &mut self.context));
+            return receiver;
+        }
+
         // We want to default to Active scan so that for routers that support WSC, we can retrieve
         // AP metadata from the probe response. However, for SoftMAC, we default to passive scan
         // because we do not have a proper active scan implementation for DFS channels.
@@ -536,6 +565,7 @@ impl super::Station for ClientSme {
                                 .map(|bss| self.cfg.convert_bss_description(&bss, None))
                                 .collect()
                         });
+                        let _void = result.clone();
                         for responder in tokens {
                             responder.respond(result.clone());
                         }
