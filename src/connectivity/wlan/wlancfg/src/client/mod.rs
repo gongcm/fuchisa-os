@@ -157,7 +157,8 @@ async fn handle_client_requests(
                 match handle_client_request_connect(
                     Arc::clone(&iface_manager),
                     Arc::clone(&saved_networks),
-                    &id,
+                    Arc::clone(&network_selector),
+                    id,
                 )
                 .await
                 {
@@ -240,7 +241,8 @@ async fn handle_client_requests(
 async fn handle_client_request_connect(
     iface_manager: Arc<Mutex<dyn IfaceManagerApi + Send>>,
     saved_networks: SavedNetworksPtr,
-    network: &fidl_policy::NetworkIdentifier,
+    network_selector: Arc<network_selection::NetworkSelector>,
+    network: types::NetworkIdentifier,
 ) -> Result<oneshot::Receiver<()>, Error> {
     let network_config = saved_networks
         .lookup(NetworkIdentifier::new(network.ssid.clone(), network.type_.into()))
@@ -250,18 +252,21 @@ async fn handle_client_request_connect(
             format_err!("Network not found: {}", String::from_utf8_lossy(&network.ssid))
         })?;
 
-    let network_id = fidl_policy::NetworkIdentifier {
-        ssid: network_config.ssid,
-        type_: fidl_policy::SecurityType::from(network_config.security_type),
-    };
-    let connect_req = client_fsm::ConnectRequest {
-        network: network_id,
-        credential: network_config.credential.clone(),
-        metadata: None,
-    };
+    match network_selector.find_best_bss_for_network(Arc::clone(&iface_manager), &network).await {
+        None => {
+            return Err(format_err!("BSS not found for network"));
+        }
+        Some((_, _, metadata)) => {
+            let connect_req = client_fsm::ConnectRequest {
+                network: network,
+                credential: network_config.credential.clone(),
+                metadata: Some(metadata),
+            };
 
-    let mut iface_manager = iface_manager.lock().await;
-    iface_manager.connect(connect_req).await
+            let mut iface_manager = iface_manager.lock().await;
+            iface_manager.connect(connect_req).await
+        }
+    }
 }
 
 async fn handle_client_request_scan(

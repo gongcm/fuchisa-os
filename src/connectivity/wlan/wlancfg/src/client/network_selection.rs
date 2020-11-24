@@ -178,6 +178,25 @@ impl NetworkSelector {
             merge_saved_networks_and_scan_data(saved_networks, &scan_result_guard.results).await;
         select_best_bss(&networks, ignore_list)
     }
+
+    pub(crate) async fn find_best_bss_for_network(
+        &self,
+        iface_manager: Arc<Mutex<dyn IfaceManagerApi + Send>>,
+        network: &types::NetworkIdentifier,
+    ) -> Option<(types::NetworkIdentifier, Credential, types::NetworkSelectionMetadata)> {
+        let scan_results = scan::perform_directed_active_scan(iface_manager, network, None).await;
+        match scan_results {
+            Err(()) => None,
+            Ok(scan_results) => {
+                let saved_networks =
+                    load_saved_networks(Arc::clone(&self.saved_network_manager)).await;
+                let networks =
+                    merge_saved_networks_and_scan_data(saved_networks, &scan_results).await;
+                let ignore_list = vec![];
+                select_best_bss(&networks, &ignore_list)
+            }
+        }
+    }
 }
 
 /// Merge the saved networks and scan results into a vector of BSSs that correspond to a saved
@@ -316,6 +335,7 @@ fn select_best_bss<'a>(
             bss_a.score().partial_cmp(&bss_b.score()).unwrap()
         })
         .map(|bss| {
+            error!("Selecting bss, desc: {}", bss.bss_info.bss_desc.is_some()); // TODO: remove
             (
                 bss.network_id.clone(),
                 bss.network_info.credential.clone(),
@@ -1403,6 +1423,98 @@ mod tests {
         assert_eq!(
             network_selector.find_best_bss(test_values.iface_manager, &vec![id]).await,
             None
+        );
+    }
+
+    #[test]
+    fn find_best_bss_for_network_end_to_end() {
+        let mut exec = fasync::Executor::new().expect("failed to create an executor");
+        let mut test_values = exec.run_singlethreaded(test_setup());
+        let network_selector = test_values.network_selector;
+
+        // create identifiers
+        let test_id_1 = types::NetworkIdentifier {
+            ssid: "foo".as_bytes().to_vec(),
+            type_: types::SecurityType::Wpa3,
+        };
+        let credential_1 = Credential::Password("foo_pass".as_bytes().to_vec());
+
+        // insert saved networks
+        exec.run_singlethreaded(
+            test_values.saved_network_manager.store(test_id_1.clone().into(), credential_1.clone()),
+        )
+        .unwrap();
+
+        // Kick off network selection
+        let network_selection_fut = network_selector
+            .find_best_bss_for_network(test_values.iface_manager.clone(), &test_id_1);
+        pin_mut!(network_selection_fut);
+        assert_variant!(exec.run_until_stalled(&mut network_selection_fut), Poll::Pending);
+
+        // Check that a scan request was sent to the sme and send back results
+        let expected_scan_request = fidl_sme::ScanRequest::Active(fidl_sme::ActiveScanRequest {
+            ssids: vec![test_id_1.ssid.clone()],
+            channels: vec![],
+        });
+        assert_variant!(
+            exec.run_until_stalled(&mut test_values.sme_stream.next()),
+            Poll::Ready(Some(Ok(fidl_sme::ClientSmeRequest::Scan {
+                txn, req, control_handle: _
+            }))) => {
+                // Validate the request
+                assert_eq!(req, expected_scan_request);
+
+                let mut mock_scan_results = vec![
+                    fidl_sme::BssInfo {
+                        bssid: [0, 0, 0, 0, 0, 0],
+                        ssid: test_id_1.ssid.clone(),
+                        rssi_dbm: 10,
+                        snr_db: 10,
+                        channel: fidl_common::WlanChan {
+                            primary: 1,
+                            cbw: fidl_common::Cbw::Cbw20,
+                            secondary80: 0,
+                        },
+                        protection: fidl_sme::Protection::Wpa3Enterprise,
+                        compatible: true,
+                        bss_desc: None,
+                    },
+                    fidl_sme::BssInfo {
+                        bssid: [0, 0, 0, 0, 0, 0],
+                        ssid: "other ssid".as_bytes().to_vec(),
+                        rssi_dbm: 0,
+                        snr_db: 0,
+                        channel: fidl_common::WlanChan {
+                            primary: 1,
+                            cbw: fidl_common::Cbw::Cbw20,
+                            secondary80: 0,
+                        },
+                        protection: fidl_sme::Protection::Wpa1,
+                        compatible: true,
+                        bss_desc: None,
+                    },
+                ];
+                // Send all the APs
+                let (_stream, ctrl) = txn
+                    .into_stream_and_control_handle().expect("error accessing control handle");
+                ctrl.send_on_result(&mut mock_scan_results.iter_mut())
+                    .expect("failed to send scan data");
+
+                // Send the end of data
+                ctrl.send_on_finished()
+                    .expect("failed to send scan data");
+            }
+        );
+
+        // Check that we pick a network
+        let results = exec.run_singlethreaded(&mut network_selection_fut);
+        assert_eq!(
+            results,
+            Some((
+                test_id_1.clone(),
+                credential_1.clone(),
+                types::NetworkSelectionMetadata { observed_in_passive_scan: false, bss_desc: None }
+            ))
         );
     }
 
