@@ -983,6 +983,7 @@ mod tests {
             credential,
             metadata: Some(client_types::NetworkSelectionMetadata {
                 observed_in_passive_scan: true,
+                bss_desc: None,
             }),
         }
     }
@@ -3870,6 +3871,7 @@ mod tests {
                         cbw: fidl_fuchsia_wlan_common::Cbw::Cbw20,
                         secondary80: 0,
                     },
+                    bss_desc: None,
                 }],
                 compatibility: client_types::Compatibility::Supported,
             }];
@@ -3986,6 +3988,7 @@ mod tests {
                         cbw: fidl_fuchsia_wlan_common::Cbw::Cbw20,
                         secondary80: 0,
                     },
+                    bss_desc: None,
                 }],
                 compatibility: client_types::Compatibility::Supported,
             }];

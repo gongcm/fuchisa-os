@@ -321,6 +321,7 @@ fn select_best_bss<'a>(
                 bss.network_info.credential.clone(),
                 types::NetworkSelectionMetadata {
                     observed_in_passive_scan: bss.bss_info.observed_in_passive_scan,
+                    bss_desc: bss.bss_info.bss_desc.clone(),
                 },
             )
         })
@@ -848,7 +849,8 @@ mod tests {
                 test_id_1.clone(),
                 credential_1.clone(),
                 types::NetworkSelectionMetadata {
-                    observed_in_passive_scan: networks[0].bss_info.observed_in_passive_scan
+                    observed_in_passive_scan: networks[0].bss_info.observed_in_passive_scan,
+                    bss_desc: networks[0].bss_info.bss_desc.clone(),
                 }
             )
         );
@@ -856,7 +858,7 @@ mod tests {
         // make the 5GHz network into a 2.4GHz network
         let mut modified_network = networks[0].clone();
         let modified_bss_info =
-            types::Bss { channel: generate_channel(6), ..*modified_network.bss_info };
+            types::Bss { channel: generate_channel(6), ..modified_network.bss_info.clone() };
         modified_network.bss_info = &modified_bss_info;
         networks[0] = modified_network;
 
@@ -867,7 +869,8 @@ mod tests {
                 test_id_2.clone(),
                 credential_2.clone(),
                 types::NetworkSelectionMetadata {
-                    observed_in_passive_scan: networks[2].bss_info.observed_in_passive_scan
+                    observed_in_passive_scan: networks[2].bss_info.observed_in_passive_scan,
+                    bss_desc: networks[2].bss_info.bss_desc.clone(),
                 }
             )
         );
@@ -918,7 +921,8 @@ mod tests {
                 test_id_1.clone(),
                 credential_1.clone(),
                 types::NetworkSelectionMetadata {
-                    observed_in_passive_scan: networks[0].bss_info.observed_in_passive_scan
+                    observed_in_passive_scan: networks[0].bss_info.observed_in_passive_scan,
+                    bss_desc: networks[0].bss_info.bss_desc.clone(),
                 }
             )
         );
@@ -935,7 +939,8 @@ mod tests {
                 test_id_2.clone(),
                 credential_2.clone(),
                 types::NetworkSelectionMetadata {
-                    observed_in_passive_scan: networks[1].bss_info.observed_in_passive_scan
+                    observed_in_passive_scan: networks[1].bss_info.observed_in_passive_scan,
+                    bss_desc: networks[1].bss_info.bss_desc.clone(),
                 }
             )
         );
@@ -952,7 +957,8 @@ mod tests {
                 test_id_1.clone(),
                 credential_1.clone(),
                 types::NetworkSelectionMetadata {
-                    observed_in_passive_scan: networks[0].bss_info.observed_in_passive_scan
+                    observed_in_passive_scan: networks[0].bss_info.observed_in_passive_scan,
+                    bss_desc: networks[0].bss_info.bss_desc.clone(),
                 }
             )
         );
@@ -1029,14 +1035,16 @@ mod tests {
                 test_id_2.clone(),
                 credential_2.clone(),
                 types::NetworkSelectionMetadata {
-                    observed_in_passive_scan: networks[2].bss_info.observed_in_passive_scan
+                    observed_in_passive_scan: networks[2].bss_info.observed_in_passive_scan,
+                    bss_desc: networks[2].bss_info.bss_desc.clone(),
                 }
             )
         );
 
         // mark the stronger network as incompatible
         let mut modified_network = networks[2].clone();
-        let modified_bss_info = types::Bss { compatible: false, ..*modified_network.bss_info };
+        let modified_bss_info =
+            types::Bss { compatible: false, ..modified_network.bss_info.clone() };
         modified_network.bss_info = &modified_bss_info;
         networks[2] = modified_network;
 
@@ -1047,7 +1055,8 @@ mod tests {
                 test_id_1.clone(),
                 credential_1.clone(),
                 types::NetworkSelectionMetadata {
-                    observed_in_passive_scan: networks[0].bss_info.observed_in_passive_scan
+                    observed_in_passive_scan: networks[0].bss_info.observed_in_passive_scan,
+                    bss_desc: networks[0].bss_info.bss_desc.clone(),
                 }
             )
         );
@@ -1098,7 +1107,8 @@ mod tests {
                 test_id_2.clone(),
                 credential_2.clone(),
                 types::NetworkSelectionMetadata {
-                    observed_in_passive_scan: networks[1].bss_info.observed_in_passive_scan
+                    observed_in_passive_scan: networks[1].bss_info.observed_in_passive_scan,
+                    bss_desc: networks[1].bss_info.bss_desc.clone(),
                 }
             )
         );
@@ -1110,7 +1120,8 @@ mod tests {
                 test_id_1.clone(),
                 credential_1.clone(),
                 types::NetworkSelectionMetadata {
-                    observed_in_passive_scan: networks[0].bss_info.observed_in_passive_scan
+                    observed_in_passive_scan: networks[0].bss_info.observed_in_passive_scan,
+                    bss_desc: networks[0].bss_info.bss_desc.clone(),
                 }
             )
         );
@@ -1321,7 +1332,7 @@ mod tests {
             Some((
                 test_id_1.clone(),
                 credential_1.clone(),
-                types::NetworkSelectionMetadata { observed_in_passive_scan: true }
+                types::NetworkSelectionMetadata { observed_in_passive_scan: true, bss_desc: None }
             ))
         );
         // Ignore that network, check that we pick the other one
@@ -1333,7 +1344,7 @@ mod tests {
             Some((
                 test_id_2.clone(),
                 credential_2.clone(),
-                types::NetworkSelectionMetadata { observed_in_passive_scan: true }
+                types::NetworkSelectionMetadata { observed_in_passive_scan: true, bss_desc: None }
             ))
         );
     }
@@ -1384,7 +1395,8 @@ mod tests {
                 credential,
                 types::NetworkSelectionMetadata {
                     observed_in_passive_scan: mixed_scan_results[0].entries[0]
-                        .observed_in_passive_scan
+                        .observed_in_passive_scan,
+                    bss_desc: mixed_scan_results[0].entries[0].bss_desc.clone()
                 }
             ))
         );
@@ -1410,6 +1422,7 @@ mod tests {
             snr_db: rng.gen_range(-20, 50),
             observed_in_passive_scan: rng.gen::<bool>(),
             compatible: rng.gen::<bool>(),
+            bss_desc: None,
         }
     }
 

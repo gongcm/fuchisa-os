@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use fidl_fuchsia_wlan_common as fidl_common;
+use fidl_fuchsia_wlan_internal as fidl_internal;
 use fidl_fuchsia_wlan_policy as fidl_policy;
 
 pub type NetworkIdentifier = fidl_policy::NetworkIdentifier;
@@ -11,6 +12,7 @@ pub type ConnectionState = fidl_policy::ConnectionState;
 pub type DisconnectStatus = fidl_policy::DisconnectStatus;
 pub type Compatibility = fidl_policy::Compatibility;
 pub type WlanChan = fidl_common::WlanChan;
+pub type BssDescription = fidl_internal::BssDescription;
 
 // An internal version of fidl_policy::ScanResult that can be cloned
 #[derive(Debug, Clone, PartialEq)]
@@ -35,7 +37,7 @@ impl From<ScanResult> for fidl_policy::ScanResult {
 }
 
 // An internal version of fidl_policy::Bss with extended information
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Bss {
     /// MAC address for the AP interface.
     pub bssid: [u8; 6],
@@ -53,6 +55,8 @@ pub struct Bss {
     pub observed_in_passive_scan: bool,
     /// Compatible with this device's network stack.
     pub compatible: bool,
+    /// Detailed BSS description used by the SME layer
+    pub bss_desc: Option<Box<BssDescription>>,
 }
 impl From<Bss> for fidl_policy::Bss {
     fn from(input: Bss) -> Self {
@@ -67,7 +71,8 @@ impl From<Bss> for fidl_policy::Bss {
 }
 
 /// Additional data used during network selection and connection.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NetworkSelectionMetadata {
     pub observed_in_passive_scan: bool,
+    pub bss_desc: Option<Box<BssDescription>>,
 }

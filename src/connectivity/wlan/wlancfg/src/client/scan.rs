@@ -88,7 +88,7 @@ pub(crate) async fn perform_scan<F>(
     let sme_result = sme_scan(Arc::clone(&iface_manager), scan_request).await;
     match sme_result {
         Ok(results) => {
-            insert_bss_to_network_bss_map(&mut bss_by_network, &results, true);
+            insert_bss_to_network_bss_map(&mut bss_by_network, results, true);
         }
         Err(()) => {
             // The passive scan failed. Send an error to the requester and return early.
@@ -112,7 +112,7 @@ pub(crate) async fn perform_scan<F>(
         let sme_result = sme_scan(iface_manager, scan_request).await;
         match sme_result {
             Ok(results) => {
-                insert_bss_to_network_bss_map(&mut bss_by_network, &results, false);
+                insert_bss_to_network_bss_map(&mut bss_by_network, results, false);
             }
             Err(()) => {
                 // There was an error in the active scan. For the FIDL interface, send an error. We
@@ -161,7 +161,7 @@ pub(crate) async fn perform_directed_active_scan(
 
     sme_result.map(|results| {
         let mut bss_by_network: HashMap<types::NetworkIdentifier, Vec<types::Bss>> = HashMap::new();
-        insert_bss_to_network_bss_map(&mut bss_by_network, &results, false);
+        insert_bss_to_network_bss_map(&mut bss_by_network, results, false);
 
         // The active scan targets a specific SSID, but we want to return only results for the
         // requested NetworkIdentifier (i.e. SSID + Security tuple).
@@ -210,7 +210,7 @@ impl ScanResultUpdate for LocationSensorUpdater {
 /// Only keeps the first unique instance of a BSSID
 fn insert_bss_to_network_bss_map(
     bss_by_network: &mut HashMap<fidl_policy::NetworkIdentifier, Vec<types::Bss>>,
-    new_bss: &[fidl_sme::BssInfo],
+    new_bss: Vec<fidl_sme::BssInfo>,
     observed_in_passive_scan: bool,
 ) {
     for bss in new_bss {
@@ -229,6 +229,7 @@ fn insert_bss_to_network_bss_map(
                     timestamp_nanos: 0, // TODO(mnck): find where this comes from
                     observed_in_passive_scan,
                     compatible: bss.compatible,
+                    bss_desc: bss.bss_desc,
                 });
             };
         } else {
@@ -548,6 +549,7 @@ mod tests {
                         },
                         observed_in_passive_scan: true,
                         compatible: true,
+                        bss_desc: None,
                     },
                     types::Bss {
                         bssid: [7, 8, 9, 10, 11, 12],
@@ -562,6 +564,7 @@ mod tests {
                         },
                         observed_in_passive_scan: true,
                         compatible: false,
+                        bss_desc: None,
                     },
                 ],
                 compatibility: types::Compatibility::Supported,
@@ -584,6 +587,7 @@ mod tests {
                     },
                     observed_in_passive_scan: true,
                     compatible: true,
+                    bss_desc: None,
                 }],
                 compatibility: types::Compatibility::Supported,
             },
@@ -680,6 +684,7 @@ mod tests {
                         },
                         observed_in_passive_scan: true,
                         compatible: true,
+                        bss_desc: None,
                     },
                     types::Bss {
                         bssid: [7, 8, 9, 10, 11, 12],
@@ -694,6 +699,7 @@ mod tests {
                         },
                         observed_in_passive_scan: true,
                         compatible: false,
+                        bss_desc: None,
                     },
                 ],
                 compatibility: types::Compatibility::Supported,
@@ -716,6 +722,7 @@ mod tests {
                     },
                     observed_in_passive_scan: false,
                     compatible: true,
+                    bss_desc: None,
                 }],
                 compatibility: types::Compatibility::Supported,
             },
@@ -737,6 +744,7 @@ mod tests {
                     },
                     observed_in_passive_scan: false,
                     compatible: true,
+                    bss_desc: None,
                 }],
                 compatibility: types::Compatibility::Supported,
             },
@@ -758,6 +766,7 @@ mod tests {
                     },
                     observed_in_passive_scan: true,
                     compatible: true,
+                    bss_desc: None,
                 }],
                 compatibility: types::Compatibility::Supported,
             },
@@ -1212,9 +1221,10 @@ mod tests {
             },
             observed_in_passive_scan: true,
             compatible: true,
+            bss_desc: None,
         }];
 
-        insert_bss_to_network_bss_map(&mut bss_by_network, &passive_input_aps, true);
+        insert_bss_to_network_bss_map(&mut bss_by_network, passive_input_aps, true);
         assert_eq!(bss_by_network.len(), 1);
         assert_eq!(bss_by_network[&expected_id], expected_bss);
 
@@ -1265,6 +1275,7 @@ mod tests {
                 },
                 observed_in_passive_scan: true,
                 compatible: true,
+                bss_desc: None,
             },
             types::Bss {
                 bssid: [1, 2, 3, 4, 5, 6],
@@ -1279,10 +1290,11 @@ mod tests {
                 },
                 observed_in_passive_scan: false,
                 compatible: true,
+                bss_desc: None,
             },
         ];
 
-        insert_bss_to_network_bss_map(&mut bss_by_network, &active_input_aps, false);
+        insert_bss_to_network_bss_map(&mut bss_by_network, active_input_aps, false);
         assert_eq!(bss_by_network.len(), 1);
         assert_eq!(bss_by_network[&expected_id], expected_bss);
     }
@@ -1735,8 +1747,8 @@ mod tests {
 
         let mut bss_by_network: HashMap<fidl_policy::NetworkIdentifier, Vec<types::Bss>> =
             HashMap::new();
-        insert_bss_to_network_bss_map(&mut bss_by_network, &passive_input_aps, true);
-        insert_bss_to_network_bss_map(&mut bss_by_network, &active_input_aps, false);
+        insert_bss_to_network_bss_map(&mut bss_by_network, passive_input_aps, true);
+        insert_bss_to_network_bss_map(&mut bss_by_network, active_input_aps, false);
         let scan_results = network_bss_map_to_scan_result(&bss_by_network);
 
         // Create an iterator and send scan results
@@ -1783,8 +1795,8 @@ mod tests {
         } = create_scan_ap_data();
 
         let mut bss_by_network: HashMap<types::NetworkIdentifier, Vec<types::Bss>> = HashMap::new();
-        insert_bss_to_network_bss_map(&mut bss_by_network, &passive_input_aps, true);
-        insert_bss_to_network_bss_map(&mut bss_by_network, &active_input_aps, false);
+        insert_bss_to_network_bss_map(&mut bss_by_network, passive_input_aps, true);
+        insert_bss_to_network_bss_map(&mut bss_by_network, active_input_aps, false);
         let scan_results = network_bss_map_to_scan_result(&bss_by_network);
 
         // Create an iterator and send scan results
@@ -1824,6 +1836,7 @@ mod tests {
                 6 => fidl_sme::Protection::Wpa3Enterprise,
                 _ => panic!(),
             },
+            bss_desc: None,
         }
     }
 

@@ -280,10 +280,13 @@ async fn connecting_state(
         .map_err(|e| ExitReason(Err(format_err!("Failed to create proxy: {:?}", e))))?;
     let mut sme_connect_request = fidl_sme::ConnectRequest {
         ssid: options.connect_request.network.ssid.clone(),
-        bss_desc: None,
+        bss_desc: options.connect_request.metadata.clone().map(|m| m.bss_desc).unwrap_or(None),
         credential: sme_credential_from_policy(&options.connect_request.credential),
         radio_cfg: RadioConfig { phy: None, cbw: None, primary_chan: None }.to_fidl(),
         deprecated_scan_type: fidl_fuchsia_wlan_common::ScanType::Active,
+    };
+    if sme_connect_request.bss_desc.is_some() {
+        error!("Passing down a bss_desc in connect request"); // TODO: DEBUG DON'T MERGE
     };
     common_options.proxy.connect(&mut sme_connect_request, Some(remote)).map_err(|e| {
         ExitReason(Err(format_err!("Failed to send command to wlanstack: {:?}", e)))
@@ -318,10 +321,13 @@ async fn connecting_state(
                 })?;
                 // Notify the saved networks manager. observed_in_passive_scan will be false if
                 // network was seen in active scan, or None if no scan was performed.
-                let observed_in_passive_scan = options.connect_request.metadata.map(|data| {
-                    if data.observed_in_passive_scan {fidl_common::ScanType::Passive}
-                    else {fidl_common::ScanType::Active}
-                });
+                let observed_in_passive_scan = match options.connect_request.metadata {
+                    Some(ref metadata) => match metadata.observed_in_passive_scan {
+                        true => Some(fidl_common::ScanType::Passive),
+                        false => Some(fidl_common::ScanType::Active)
+                    },
+                    None => None
+                };
                 common_options.saved_networks_manager.record_connect_result(
                     options.connect_request.network.clone().into(),
                     &options.connect_request.credential,
@@ -653,7 +659,10 @@ mod tests {
                 type_: types::SecurityType::Wep,
             },
             credential: Credential::Password("Anything".as_bytes().to_vec()),
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
 
         // Store the network in the saved_networks_manager, so we can record connection success
@@ -781,7 +790,10 @@ mod tests {
                 type_: types::SecurityType::Wpa2,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let (connect_sender, mut connect_receiver) = oneshot::channel();
         let connecting_options = ConnectingOptions {
@@ -939,7 +951,10 @@ mod tests {
         let connect_request = ConnectRequest {
             network: next_network_identifier,
             credential: next_credential,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let (connect_sender, mut connect_receiver) = oneshot::channel();
         let connecting_options = ConnectingOptions {
@@ -1054,7 +1069,10 @@ mod tests {
         let connect_request = ConnectRequest {
             network: next_network_identifier,
             credential: next_credential,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let (connect_sender, mut connect_receiver) = oneshot::channel();
         let connecting_options = ConnectingOptions {
@@ -1132,7 +1150,10 @@ mod tests {
                 type_: types::SecurityType::Wpa2,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let (connect_sender, mut connect_receiver) = oneshot::channel();
         let connecting_options = ConnectingOptions {
@@ -1241,7 +1262,10 @@ mod tests {
                 type_: types::SecurityType::Wpa2,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let (connect_sender, mut connect_receiver) = oneshot::channel();
         let connecting_options = ConnectingOptions {
@@ -1288,7 +1312,10 @@ mod tests {
                 type_: types::SecurityType::Wpa2,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         client.connect(connect_request2.clone(), connect_sender2).expect("failed to make request");
 
@@ -1408,7 +1435,10 @@ mod tests {
                 type_: types::SecurityType::Wpa2,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let (connect_sender, mut connect_receiver) = oneshot::channel();
         let connecting_options = ConnectingOptions {
@@ -1506,7 +1536,10 @@ mod tests {
                 type_: types::SecurityType::Wpa2,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let (connect_sender, mut connect_receiver) = oneshot::channel();
         let connecting_options = ConnectingOptions {
@@ -1540,7 +1573,10 @@ mod tests {
                 type_: types::SecurityType::Wpa2,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let initial_state = connected_state(test_values.common_options, connect_request);
         let fut = run_state_machine(initial_state);
@@ -1626,7 +1662,10 @@ mod tests {
                 type_: types::SecurityType::Wpa2,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let initial_state = connected_state(test_values.common_options, connect_request.clone());
         let fut = run_state_machine(initial_state);
@@ -1689,7 +1728,10 @@ mod tests {
                 type_: types::SecurityType::Wpa2,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let initial_state = connected_state(test_values.common_options, connect_request.clone());
         let fut = run_state_machine(initial_state);
@@ -1733,7 +1775,10 @@ mod tests {
                 type_: types::SecurityType::Wpa2,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         client.connect(connect_request2.clone(), connect_sender2).expect("failed to make request");
 
@@ -1844,7 +1889,10 @@ mod tests {
                 type_: types::SecurityType::Wpa2,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let initial_state = connected_state(test_values.common_options, connect_request.clone());
         let fut = run_state_machine(initial_state);
@@ -1978,7 +2026,10 @@ mod tests {
                 type_: types::SecurityType::Wpa2,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let (connect_sender, _connect_receiver) = oneshot::channel();
         let connecting_options = ConnectingOptions {
@@ -2097,7 +2148,10 @@ mod tests {
                 type_: types::SecurityType::None,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let (sender, _receiver) = oneshot::channel();
 
@@ -2150,7 +2204,10 @@ mod tests {
                 type_: types::SecurityType::None,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let (sender, _receiver) = oneshot::channel();
 
@@ -2200,7 +2257,10 @@ mod tests {
                 type_: types::SecurityType::None,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let (sender, _receiver) = oneshot::channel();
 
@@ -2300,7 +2360,10 @@ mod tests {
                 type_: types::SecurityType::None,
             },
             credential: Credential::None,
-            metadata: Some(types::NetworkSelectionMetadata { observed_in_passive_scan: true }),
+            metadata: Some(types::NetworkSelectionMetadata {
+                observed_in_passive_scan: true,
+                bss_desc: None,
+            }),
         };
         let (sender, _receiver) = oneshot::channel();
 
