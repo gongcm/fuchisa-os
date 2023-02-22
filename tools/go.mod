@@ -23,12 +23,11 @@ require (
 	go.chromium.org/luci v0.0.0-20200828094204-41b976d93de1
 	go.fuchsia.dev/fuchsia/garnet v0.0.0-20200821151753-3226fa91b98e
 	go.fuchsia.dev/fuchsia/src v0.0.0-20200821151753-3226fa91b98e
-	golang.org/x/crypto v0.0.0-20200820211705-5c72a883971a
-	golang.org/x/net v0.0.0-20200822124328-c89045814202
-	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
-	golang.org/x/sys v0.0.0-20200828081204-131dc92a58d5
-	golang.org/x/text v0.3.3 // indirect
-	golang.org/x/tools v0.0.0-20200821151209-74543c403428 // indirect
+	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519
+	golang.org/x/net v0.0.0-20220722155237-a158d28d115b
+	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
+	golang.org/x/text v0.3.8 // indirect
 	google.golang.org/api v0.30.0 // indirect
 	google.golang.org/genproto v0.0.0-20200825200019-8632dd797987 // indirect
 	google.golang.org/grpc v1.31.1 // indirect
